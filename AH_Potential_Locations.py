@@ -88,13 +88,13 @@ def upload():
         file.save(filepath)
         return redirect(url_for('display_data', filename=file.filename))
 
-@app.route('/data/<filename>', methods=['GET', 'POST'])
+@app.route('/data/<filename>', methods=['GET'])
 def display_data(filename):
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     df = pd.read_excel(filepath, engine='openpyxl')
 
     # Si el usuario envía un filtro por Location
-    location_filter = request.form.get('location_filter')
+    location_filter = request.args.get('location_filter')
     if location_filter:
         df = df[df['LOCATION'].str.split().str[0].str.lower() == location_filter.lower()]
 
@@ -180,7 +180,7 @@ def display_data(filename):
             border: none;
             border-radius: 3px;
         }
-        .filter-form input[type=submit] {
+        .filter-form input[type=submit], .clear-button {
             background-color: #ff6200;
             color: #ffffff;
             padding: 5px 10px;
@@ -192,6 +192,16 @@ def display_data(filename):
         .filter-form input[type=submit]:hover {
             background-color: #e55b00;
         }
+        .clear-button {
+            background-color: #6c757d;
+            text-decoration: none;
+            padding: 6px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .clear-button:hover {
+            background-color: #5a6268;
+        }
         @media screen and (max-width: 768px) {
             table, th, td {
                 font-size: 14px;
@@ -199,10 +209,11 @@ def display_data(filename):
         }
     </style>
     <div class="container">
-        <form method="post" class="filter-form">
+        <form method="get" class="filter-form">
             <label for="location_filter">Filter Location:</label>
             <input type="text" name="location_filter" id="location_filter" placeholder="Location">
-            <input type="submit" value="Apply">
+            <input type="submit" value="Apply/Remove">
+            <a href="/data/{{ filename }}" class="clear-button">Clear Filter</a>
         </form>
         <table>
             <tr>
