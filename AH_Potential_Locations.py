@@ -1,6 +1,6 @@
 import os
 from flask import Flask, request, redirect, url_for, render_template_string
-import pandas as pd
+import pandas as pd  # type: ignore
 from datetime import datetime
 
 app = Flask(__name__)
@@ -10,8 +10,23 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+# Ruta principal redirigida a report
 @app.route('/')
+def index():
+    return redirect(url_for('report'))
+
+@app.route('/upload', methods=['GET', 'POST'])
 def upload_file():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return 'No file part'
+        file = request.files['file']
+        if file.filename == '':
+            return 'No selected file'
+        if file:
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+            file.save(filepath)
+            return redirect(url_for('display_data', filename=file.filename))
     return render_template_string('''
     <!doctype html>
     <html lang="es">
@@ -66,7 +81,7 @@ def upload_file():
     <body>
         <div class="container">
             <h1>Sube el archivo Excel</h1>
-            <form method="post" enctype="multipart/form-data" action="/upload">
+            <form method="post" enctype="multipart/form-data">
                 <input type="file" name="file" required>
                 <br>
                 <input type="submit" value="Subir archivo">
@@ -76,27 +91,77 @@ def upload_file():
     </html>
     ''')
 
-@app.route('/upload', methods=['POST'])
-def upload():
-    if 'file' not in request.files:
-        return 'No file part'
-    file = request.files['file']
-    if file.filename == '':
-        return 'No selected file'
-    if file:
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(filepath)
-        return redirect(url_for('display_data', filename=file.filename))
+@app.route('/report', methods=['GET'])
+def report():
+    files = os.listdir(UPLOAD_FOLDER)
+    if not files:
+        message = "No hay reportes disponibles. Por favor, sube un archivo."
+        return render_template_string('''
+        <!doctype html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Report AH Potential Locations</title>
+            <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+            <style>
+                body {
+                    font-family: 'Roboto', sans-serif;
+                    background-color: #f4f4f4;
+                    padding: 20px;
+                }
+                .container {
+                    max-width: 1200px;
+                    margin: auto;
+                    background: #ffffff;
+                    padding: 20px;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+                    border-radius: 10px;
+                    text-align: center;
+                }
+                h1, h2 {
+                    color: #333;
+                    font-weight: 700;
+                }
+                button {
+                    background-color: #ff6200;
+                    color: #ffffff;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    text-decoration: none;
+                    font-weight: bold;
+                    border: none;
+                    cursor: pointer;
+                }
+                button:hover {
+                    background-color: #e55b00;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Report AH Potential Locations</h1>
+                <h2>Fecha: {{ date }}</h2>
+                <p>{{ message }}</p>
+                <a href="{{ url_for('upload_file') }}">
+                    <button>Subir Archivo</button>
+                </a>
+            </div>
+        </body>
+        </html>
+        ''', date=datetime.now().strftime("%d/%m/%Y"), message=message)
 
-@app.route('/data/<filename>', methods=['GET'])
+    return redirect(url_for('display_data', filename=files[-1]))
+
+@app.route('/data/<filename>', methods=['GET', 'POST'])
 def display_data(filename):
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     df = pd.read_excel(filepath, engine='openpyxl')
 
     # Si el usuario envía un filtro por Location
-    location_filter = request.args.get('location_filter')
+    location_filter = request.form.get('location_filter')
     if location_filter:
-        df = df[df['LOCATION'].str.split().str[0].str.lower() == location_filter.lower()]
+        df = df[df['LOCATION'].str.contains(location_filter, case=False, na=False)]
 
     # Selección de las columnas requeridas
     columns = ['LOCATION', 'Google map', 'Pictures', 'Real Estate ad', 'net rent / month', 'TOTAL SQM OUTDOOR + INDOOR', 'Estimated # parking spots outdoor', '# parking spaces for showroom', 'Rent/sqm', '€/parking spot', 'Flexicar Around? Insert in comments which one and driving time', 'OcasionPlus Around? Insert in comments which one and driving time', 'CTC >10 min?']
@@ -151,16 +216,6 @@ def display_data(filename):
         a:hover {
             text-decoration: underline;
         }
-        .details {
-            display: none;
-            padding-top: 10px;
-        }
-        .toggle-button {
-            cursor: pointer;
-            color: #ff6200;
-            font-weight: bold;
-            text-decoration: underline;
-        }
         .filter-form {
             text-align: left;
             margin-bottom: 20px;
@@ -180,7 +235,7 @@ def display_data(filename):
             border: none;
             border-radius: 3px;
         }
-        .filter-form input[type=submit], .clear-button {
+        .filter-form input[type=submit] {
             background-color: #ff6200;
             color: #ffffff;
             padding: 5px 10px;
@@ -192,15 +247,15 @@ def display_data(filename):
         .filter-form input[type=submit]:hover {
             background-color: #e55b00;
         }
-        .clear-button {
-            background-color: #6c757d;
-            text-decoration: none;
-            padding: 6px 10px;
-            border-radius: 5px;
-            font-weight: bold;
+        .details {
+            display: none;
+            padding-top: 10px;
         }
-        .clear-button:hover {
-            background-color: #5a6268;
+        .toggle-button {
+            cursor: pointer;
+            color: #ff6200;
+            font-weight: bold;
+            text-decoration: underline;
         }
         @media screen and (max-width: 768px) {
             table, th, td {
@@ -209,14 +264,14 @@ def display_data(filename):
         }
     </style>
     <div class="container">
-        <form method="get" class="filter-form">
+        <form method="post" class="filter-form">
             <label for="location_filter">Filter Location:</label>
             <input type="text" name="location_filter" id="location_filter" placeholder="Location">
-            <input type="submit" value="Apply/Remove">
-            <a href="/data/{{ filename }}" class="clear-button">Clear Filter</a>
+            <input type="submit" value="Apply">
         </form>
         <table>
             <tr>
+                <th>#</th>
                 <th>Location</th>
                 <th>Google map</th>
                 <th>Pictures</th>
@@ -231,6 +286,7 @@ def display_data(filename):
     '''
 
     for index, row in df_selected.iterrows():
+        row_number = index + 1
         google_map_link = f'<a href="{row["Google map"]}" target="_blank">Link</a>' if pd.notna(row["Google map"]) else 'N/A'
         pictures_link = f'<a href="{row["Pictures"]}" target="_blank">Link</a>' if pd.notna(row["Pictures"]) else 'N/A'
         real_estate_link = f'<a href="{row["Real Estate ad"]}" target="_blank">Link</a>' if pd.notna(row["Real Estate ad"]) else 'N/A'
@@ -241,6 +297,7 @@ def display_data(filename):
 
         html_table += f'''
             <tr>
+                <td>{row_number}</td>
                 <td>{row['LOCATION']}</td>
                 <td>{google_map_link}</td>
                 <td>{pictures_link}</td>
@@ -273,20 +330,8 @@ def display_data(filename):
                 details.style.display = 'none';
             }
         }
-        
-        function confirmPassword() {
-            let password = prompt("Por favor, introduce la contraseña para continuar:");
-            if (password === "desde54") {
-                window.location.href = "/";
-            } else {
-                alert("Contraseña incorrecta");
-            }
-        }
     </script>
     '''
-
-    # Obtención de la fecha actual en formato dd/mm/yyyy
-    current_date = datetime.now().strftime("%d/%m/%Y")
 
     return render_template_string('''
     <!doctype html>
@@ -303,12 +348,15 @@ def display_data(filename):
             <h2>Fecha: {{ date }}</h2>
             <div>{{ table|safe }}</div>
             <div style="text-align: center; margin-top: 20px;">
-                <button onclick="confirmPassword()" style="background-color: #ff6200; color: #ffffff; padding: 10px 20px; border-radius: 5px; text-decoration: none; font-weight: bold; border: none;">New Report</button>
+                <a href="{{ url_for('upload_file') }}">
+                    <button style="background-color: #ff6200; color: #ffffff; padding: 10px 20px; border-radius: 5px; text-decoration: none; font-weight: bold; border: none;">New Report</button>
+                </a>
             </div>
         </div>
     </body>
     </html>
-    ''', table=html_table, date=current_date)
+    ''', table=html_table, date=datetime.now().strftime("%d/%m/%Y"))
 
 if __name__ == '__main__':
     app.run(debug=True)
+
